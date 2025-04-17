@@ -37,7 +37,7 @@ PINWHEEL_TRAIL_LENGTH = FRAMERATE / 10
 # --- Setup ---
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Marble Rube Goldberg Race")
+pygame.display.set_caption("Marble Race")
 clock = pygame.time.Clock()
 draw_options = pymunk.pygame_util.DrawOptions(screen)
 draw_options.shape_outline_color = (255,255,255,255)
@@ -131,7 +131,7 @@ class Obstacle:
         space.add(body, shape)
 
     @staticmethod
-    def add_pinwheel(x, y):
+    def add_pinwheel(x, y, bottom_ramp=False, top_ramp=False):
         pinwheel_body = pymunk.Body(5, pymunk.moment_for_circle(5, 0, 40))
         pinwheel_body.position = (x, y)
         pinwheel_shapes = []
@@ -147,16 +147,20 @@ class Obstacle:
         pivot = pymunk.PivotJoint(pinwheel_body, space.static_body, (x, y))
         pivot.collide_bodies = False
         space.add(pivot)
-        motor_speed = random.choice([-FRAMERATE/8, -FRAMERATE/12, -FRAMERATE/24, FRAMERATE/24, FRAMERATE/12, FRAMERATE/8])
+        motor_speed = (
+            random.choice([-FRAMERATE/8, FRAMERATE/8]) if bottom_ramp else
+            random.choice([-FRAMERATE/24, FRAMERATE/24]) if top_ramp else
+            random.choice([-FRAMERATE/8, -FRAMERATE/12, -FRAMERATE/24, FRAMERATE/24, FRAMERATE/12, FRAMERATE/8])
+        )
         motor = pymunk.SimpleMotor(space.static_body, pinwheel_body, motor_speed)
         space.add(motor)
 
     @staticmethod
-    def add_obstacle(x, y):
+    def add_obstacle(x, y, bottom_ramp=False, top_ramp=False):
         if random.random() < 0.5:
             Obstacle.add_bumper(x, y)
         else:
-            Obstacle.add_pinwheel(x, y)
+            Obstacle.add_pinwheel(x, y, bottom_ramp=bottom_ramp, top_ramp=top_ramp)
 
 bumper_hits = {}
 
@@ -317,11 +321,11 @@ def generate_course():
         Obstacle.add_static_segment((x1, y - 10), (x2, y + 40))
 
         if i == 0:
-            # Top ramp: always add a bumper
-            Obstacle.add_bumper(bumper_x, y + 65)
+            # Top ramp: always add a spinner
+            Obstacle.add_obstacle(bumper_x, y + 65, top_ramp=True)
         elif i == num_ramps - 1:
             # Bottom ramp: always add a spinner
-            Obstacle.add_pinwheel(bumper_x, y + 65)
+            Obstacle.add_obstacle(bumper_x, y + 65, bottom_ramp=True)
         else:
             # Other ramps: randomly add either a bumper or a spinner
             Obstacle.add_obstacle(bumper_x, y + 65)
