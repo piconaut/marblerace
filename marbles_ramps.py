@@ -15,6 +15,8 @@ import os
 from scipy.io import wavfile
 from datetime import datetime  # Import datetime for timestamp
 import argparse  # Import argparse for command-line arguments
+from common.marble import Marble  # Import the Marble class
+from common.confetti import ConfettiManager  # Import ConfettiManager
 
 # --- Configuration ---
 FRAMERATE = 120
@@ -46,6 +48,8 @@ draw_options.shape_static_color = (255,255,255,255)
 space = pymunk.Space()
 space.gravity = (0, 900)
 
+confetti_manager = ConfettiManager(WIDTH, HEIGHT, COLORS, CONFETTI_COUNT)  # Initialize ConfettiManager
+
 # --- Start and Finish ---
 start_x, start_y = 85, 25
 finish_area = pygame.Rect(WIDTH-50, HEIGHT - 200, 50, 50)
@@ -56,59 +60,12 @@ win_audio_sample_rate = None
 
 frame_counter = 0  # Initialize frame counter
 
-# --- Marble Class ---
-class Marble:
-    def __init__(self, index, start_x, start_y):
-        self.index = index
-        self.color = COLORS[index]["rgb"]
-        self.name = COLORS[index]["name"]
-        self.trail = []
-        self.body = pymunk.Body(mass=1, moment=10)
-        self.body.position = (start_x, start_y + index * (MARBLE_RADIUS * 2))
-        self.shape = pymunk.Circle(self.body, MARBLE_RADIUS)
-        self.shape.elasticity = 0.6
-        self.shape.color = self.color + (255,)  # Add alpha channel
-        space.add(self.body, self.shape)
-
-    def update_trail(self):
-        x, y = self.body.position
-        self.trail.append((x, y))
-        if len(self.trail) > TRAIL_LENGTH:
-            self.trail.pop(0)
-
-    def draw_trail(self):
-        for j, (x, y) in enumerate(self.trail):
-            alpha = int(150 * (j + 1) / TRAIL_LENGTH)
-            surf = pygame.Surface((MARBLE_RADIUS * 2, MARBLE_RADIUS * 2), pygame.SRCALPHA)
-            pygame.draw.circle(surf, (*self.color, alpha), (5, 5), MARBLE_RADIUS)
-            screen.blit(surf, (x - MARBLE_RADIUS / 1.5, y - MARBLE_RADIUS / 1.5))
-
-    def draw_halo(self):
-        t = frame_counter / FRAMERATE
-        speed = math.hypot(*self.body.velocity)
-        pulse = 0.004 * speed + 0.15 * math.sin(t * 6) + 1
-        max_radius = int(20 * pulse)
-        halo_surface = pygame.Surface((max_radius * 2, max_radius * 2), pygame.SRCALPHA)
-        for r in range(max_radius, 0, -1):
-            alpha = int(150 - 150 * (r / max_radius) ** 2)
-            pygame.draw.circle(halo_surface, (*self.color, alpha), (max_radius, max_radius), r)
-        screen.blit(halo_surface, (self.body.position.x - max_radius, self.body.position.y - max_radius))
-
-    def draw(self):
-        self.draw_halo()
-        x, y = self.body.position
-        darker_rgb = tuple(max(0, int(c * 0.5)) for c in self.color)
-        pygame.draw.circle(screen, darker_rgb, (int(x), int(y)), MARBLE_RADIUS + 2)
-        pygame.draw.circle(screen, self.color, (int(x), int(y)), MARBLE_RADIUS)
-        shine_pos = (int(x - MARBLE_RADIUS // 3), int(y - MARBLE_RADIUS // 3))
-        pygame.draw.circle(screen, (255, 255, 255), shine_pos, 2)
-
 # --- Create Marbles ---
 marbles = []
 
 def create_marbles():
     global marbles
-    marbles = [Marble(i, start_x, start_y) for i in range(NUM_MARBLES)]
+    marbles = [Marble(i, start_x, start_y, space) for i in range(NUM_MARBLES)]  # Pass space explicitly
 
 # --- Obstacle Class ---
 class Obstacle:
@@ -344,40 +301,12 @@ def generate_course():
     Obstacle.add_static_segment((WIDTH, 0), (WIDTH, HEIGHT))  # Right wall
     Obstacle.add_static_segment((0, 0), (WIDTH, 0))  # Top wall
 
-# --- Confetti ---
-def spawn_confetti():
-    for _ in range(CONFETTI_COUNT):
-        x, y = WIDTH // 2, HEIGHT // 2.5
-        angle = random.uniform(0, 2 * math.pi)
-        speed = random.uniform(0, 300)
-        vx = math.cos(angle) * speed
-        vy = math.sin(angle) * speed - 200
-        color = random.choice(COLORS)
-        radius = random.randint(2, 4)
-        particle = {
-            'pos': [x, y],
-            'vel': [vx, vy],
-            'radius': radius,
-            'color': color["rgb"]
-        }
-        confetti_particles.append(particle)
-
-def update_confetti(dt):
-    for particle in confetti_particles:
-        particle['vel'][1] += 300 * dt  # gentle gravity
-        particle['pos'][0] += particle['vel'][0] * dt
-        particle['pos'][1] += particle['vel'][1] * dt
-
-def draw_confetti():
-    for particle in confetti_particles:
-        pygame.draw.circle(screen, particle['color'], (int(particle['pos'][0]), int(particle['pos'][1])), particle['radius'])
-
 def check_for_winner():
     global winner, win_audio_data, win_audio_sample_rate
     for marble in marbles:
         if finish_area.collidepoint(marble.body.position.x, marble.body.position.y) and winner is None:
             winner = {"rgb": marble.color, "name": marble.name}
-            spawn_confetti()
+            confetti_manager.spawn_confetti()  # Use ConfettiManager to spawn confetti
             win_audio_data, win_audio_sample_rate = play_win_sound()  # Play and store win sound
             return True
     return False
@@ -554,7 +483,7 @@ def main():
                 # Update and draw gradient trails
                 for marble in marbles:
                     marble.update_trail()
-                    marble.draw_trail()
+                    marble.draw_trail(screen)  # Pass screen explicitly
 
                 # Eliminate marbles that go out of bounds
                 for i in range(len(marbles) - 1, -1, -1):
@@ -567,7 +496,7 @@ def main():
 
                 # Draw marbles
                 for marble in marbles:
-                    marble.draw()
+                    marble.draw(screen, frame_counter, FRAMERATE)  # Pass FRAMERATE explicitly
 
                 # Check for winner
                 if winner is None:
@@ -575,8 +504,8 @@ def main():
                         winner_time = frame_counter / FRAMERATE  # Use frame_counter
 
                 # Update and draw confetti
-                update_confetti(dt)
-                draw_confetti()
+                confetti_manager.update_confetti(dt)  # Update confetti
+                confetti_manager.draw_confetti(screen)  # Draw confetti
 
                 # Draw elimination effects
                 update_elimination_effects(dt)
