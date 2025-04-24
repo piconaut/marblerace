@@ -5,10 +5,8 @@ import random
 import sys
 import math
 import colorsys
-from moviepy import *
 import pygame.midi
 import numpy as np
-from scipy.io.wavfile import write
 from mido import MidiFile
 from moviepy import *
 import os
@@ -229,7 +227,7 @@ def save_recording(winner_time):
     # Normalize the final audio data to prevent clipping
     if np.max(np.abs(audio_data)) > 0:
         audio_data = np.int16(audio_data / np.max(np.abs(audio_data)) * 32767)
-        write(audio_file, sample_rate, audio_data)  # Save audio to WAV file
+        wavfile.write(audio_file, sample_rate, audio_data)  # Save audio to WAV file
     else:
         print("No audio data generated. Skipping audio file creation.")
         audio_file = None
